@@ -1,0 +1,1581 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Photo Spot 1.0.0 — foto's op een PDF</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Cg%20transform%3D%22rotate%28-8%2016%2016%29%22%3E%3Crect%20x%3D%2211%22%20y%3D%223%22%20width%3D%2210%22%20height%3D%225%22%20rx%3D%222.2%22%20fill%3D%22%231a59bf%22%2F%3E%3Crect%20x%3D%222.5%22%20y%3D%227%22%20width%3D%2227%22%20height%3D%2221%22%20rx%3D%224.5%22%20fill%3D%22%231a59bf%22%2F%3E%3Ccircle%20cx%3D%2216%22%20cy%3D%2217.5%22%20r%3D%227.3%22%20fill%3D%22%23ffffff%22%2F%3E%3Ccircle%20cx%3D%2216%22%20cy%3D%2217.5%22%20r%3D%224.4%22%20fill%3D%22%2339b3f0%22%2F%3E%3Ccircle%20cx%3D%2224.3%22%20cy%3D%2212%22%20r%3D%221.6%22%20fill%3D%22%23ffd166%22%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E" />
+<!--
+  Photo Spot 1.0.0
+  Copyright 2026 Steel Prisms
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<style>
+  :root{
+    --ink:#1c2b24;
+    --paper:#f6f4ee;
+    --line:#d8d3c4;
+    --accent:#2f5d4f;
+    --accent-soft:#e4ece7;
+    --warn:#a5432a;
+    --amber:#c98a22;
+    --spot:#1a59bf;
+    --mono:"IBM Plex Mono","SFMono-Regular",Consolas,monospace;
+    --sans:"IBM Plex Sans","Segoe UI",system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0; background:var(--paper); color:var(--ink);
+    font-family:var(--sans); font-size:14px; line-height:1.45;
+    overflow:hidden;
+  }
+  #app{display:flex; height:100vh;}
+
+  /* ---------- left: viewer ---------- */
+  #viewer{width:75%; display:flex; flex-direction:column; border-right:1px solid var(--line); min-width:0;}
+  #viewerBar{
+    display:flex; align-items:center; gap:10px; padding:8px 14px;
+    background:#fbfaf7; border-bottom:1px solid var(--line); flex:none; min-height:46px;
+  }
+  #viewerBar .name{font-weight:600; font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:38%;}
+  #viewerBar .spacer{flex:1;}
+  .tbtn{
+    font:inherit; font-size:13px; background:#fff; border:1px solid var(--line);
+    border-radius:3px; padding:4px 9px; cursor:pointer; color:var(--ink);
+  }
+  .tbtn:hover{border-color:var(--accent); background:var(--accent-soft);}
+  .tbtn:disabled{opacity:.45; cursor:not-allowed;}
+  .tbtn[aria-pressed="true"]{background:var(--accent); border-color:var(--accent); color:#fff;}
+  .tbtn[aria-pressed="true"]:hover{background:#254a3f;}
+  #viewerBar .grp{display:flex; align-items:center; gap:4px; font-size:12.5px; color:#5b665f;}
+  #pageJump{width:46px; font:inherit; font-size:12.5px; padding:3px 5px; border:1px solid var(--line); border-radius:3px; text-align:center;}
+  #zoomLabel{font-family:var(--mono); font-size:12px; color:#5b665f; min-width:44px; text-align:center;}
+
+  #rotateBanner{
+    flex:none; padding:7px 14px; background:#fdf3d8; border-bottom:1px solid #e6d49a;
+    font-size:12.5px; color:#6b551c;
+  }
+  #rotateBanner[hidden]{display:none;}
+
+  #viewerScroll{flex:1; overflow:auto; position:relative; background:#e8e5dc;}
+  #pdfZone{
+    position:absolute; inset:0; margin:18px; border:2px dashed var(--line); border-radius:4px;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px;
+    background:#fbfaf7; cursor:pointer; text-align:center; padding:24px;
+  }
+  #pdfZone:hover,#pdfZone.drag{border-color:var(--accent); background:var(--accent-soft);}
+  #pdfZone .big{font-size:16px; font-weight:600;}
+  #pdfZone .sub{font-size:13px; color:#5b665f;}
+  #pdfZone[hidden]{display:none;}
+
+  #pages{padding:18px 0 40px; display:flex; flex-direction:column; align-items:center; gap:16px;}
+  .pageBox{
+    position:relative; background:#fff; box-shadow:0 1px 5px rgba(0,0,0,.22);
+    flex:none; touch-action:none;
+  }
+  .pageBox canvas{display:block; width:100%; height:100%;}
+  .pageBox .pageNo{
+    position:absolute; top:-15px; right:0; font-family:var(--mono); font-size:11px; color:#7d8a83;
+  }
+  .spotLayer{position:absolute; inset:0;}
+
+  .spot{position:absolute; cursor:grab; touch-action:none;}
+  .spot svg{filter:drop-shadow(0 1px 2px rgba(0,0,0,.4));}
+  .spot:active{cursor:grabbing;}
+  .spot svg{display:block; width:100%; height:100%;}
+  /* A disc around the number would be as large as the 8 pt icon itself and would read
+     as the marker rather than as a label on one. Bare digits with a white halo stay
+     legible over any page content without competing. */
+  .spot .badge{
+    position:absolute; left:100%; bottom:60%; margin-left:1px;
+    font-family:var(--sans); font-size:10px; font-weight:700; line-height:1;
+    color:var(--ink); white-space:nowrap;
+    text-shadow:0 0 2px #fff, 0 0 2px #fff, 1px 1px 0 #fff, -1px -1px 0 #fff;
+  }
+  .spot.overlapping svg{outline:2px solid var(--amber); outline-offset:2px;}
+  .spot.dragging{opacity:.25;}
+
+  /* ---------- right: panel ---------- */
+  #panel{width:25%; min-width:250px; display:flex; flex-direction:column; background:#fbfaf7; position:relative;}
+  #panel h2{font-size:13px; margin:0; font-weight:650; letter-spacing:.01em;}
+  #panelHead{padding:12px 14px 10px; border-bottom:1px solid var(--line); flex:none;}
+  #panelHead .count{font-family:var(--mono); font-size:11.5px; color:#7d8a83; margin-top:2px;}
+  #viewerBar .brand{display:flex; align-items:center; gap:7px; padding-right:12px; margin-right:2px; border-right:1px solid var(--line);}
+  #viewerBar .brand svg{width:24px; height:24px; flex:none;}
+  #viewerBar .wordmark{font-size:14px; font-weight:650; letter-spacing:-0.01em; white-space:nowrap;}
+  #viewerBar .version{
+    font-family:var(--mono); font-size:9.5px; color:#fff; background:var(--accent);
+    border-radius:8px; padding:1px 5px; letter-spacing:.02em;
+  }
+  #imgZone{
+    margin:12px 14px; padding:14px; border:1.5px dashed var(--line); border-radius:3px;
+    text-align:center; font-size:12.5px; color:#5b665f; flex:none; background:#fff;
+  }
+  #imgZone.drag{border-color:var(--accent); background:var(--accent-soft);}
+  #panel.drag{background:var(--accent-soft);}
+  #viewerScroll.drag{outline:3px dashed var(--accent); outline-offset:-8px;}
+  #imgZone .row{display:flex; gap:6px; margin-top:8px;}
+  #imgZone .row .tbtn{flex:1;}
+
+  #imgList{flex:1; overflow:auto; padding:0 14px 10px;}
+  .imgRow{
+    display:flex; align-items:center; gap:9px; padding:6px; margin-bottom:5px;
+    background:#fff; border:1px solid var(--line); border-radius:3px; cursor:grab;
+    touch-action:none; user-select:none;
+  }
+  .imgRow:hover{border-color:var(--accent);}
+  .imgRow.busy{cursor:default; opacity:.72;}
+  .imgRow.bad{border-color:var(--warn); background:#fdf1ee;}
+  .imgRow .thumb{
+    width:44px; height:44px; flex:none; border-radius:2px; background:#ece9e0;
+    object-fit:cover; display:block;
+  }
+  .imgRow .meta{min-width:0; flex:1;}
+  .imgRow .fname{font-size:12.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .imgRow .sub{font-family:var(--mono); font-size:10.5px; color:#8a938c;}
+  .imgRow .sub.placed{color:var(--accent);}
+  .imgRow .rm{
+    flex:none; width:20px; height:20px; border:none; background:none; cursor:pointer;
+    color:#9aa39c; font-size:15px; line-height:1; border-radius:3px;
+  }
+  .imgRow .rm:hover{background:#f0ece1; color:var(--warn);}
+  .spinner{
+    width:14px; height:14px; border:2px solid #cfd6d1; border-top-color:var(--accent);
+    border-radius:50%; animation:spin .8s linear infinite; display:inline-block; vertical-align:-2px;
+  }
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  #panelFoot{flex:none; border-top:1px solid var(--line); padding:12px 14px; background:#f3f1ea;}
+  #panelFoot label{font-size:12px; color:#5b665f; display:block; margin-bottom:4px;}
+  #quality{width:100%; font:inherit; font-size:13px; padding:5px 6px; border:1px solid var(--line); border-radius:3px; background:#fff; margin-bottom:10px;}
+  #exportBtn{
+    width:100%; font-family:var(--sans); font-weight:600; font-size:14px;
+    background:var(--accent); color:#fff; border:none; border-radius:3px; padding:11px; cursor:pointer;
+  }
+  #exportBtn:disabled{background:#b9c3bd; cursor:not-allowed;}
+  #exportBtn:hover:not(:disabled){background:#254a3f;}
+  #progress{height:4px; background:#dfdcd2; border-radius:2px; margin-top:9px; overflow:hidden; display:none;}
+  #progress.show{display:block;}
+  #progress div{height:100%; width:0; background:var(--accent); transition:width .15s;}
+  #colophon{
+    margin-top:10px; text-align:right; font-size:11px; color:#98a09a;
+  }
+  #colophon button{
+    font:inherit; color:inherit; background:none; border:none; padding:0; cursor:pointer;
+    border-bottom:1px dotted #c3c9c2;
+  }
+  #colophon button:hover{color:var(--accent); border-bottom-color:var(--accent);}
+
+  #about{
+    border:none; border-radius:6px; padding:0; width:min(440px, calc(100vw - 32px));
+    background:#fff; color:var(--ink); box-shadow:0 18px 50px rgba(0,0,0,.3);
+  }
+  #about::backdrop{background:rgba(18,32,26,.45);}
+  #about .head{
+    display:flex; align-items:center; gap:11px; padding:20px 22px 16px; border-bottom:1px solid var(--line);
+  }
+  #about .head svg{width:40px; height:40px; flex:none;}
+  #about .head .name{font-size:19px; font-weight:650; letter-spacing:-0.01em;}
+  #about .head .ver{font-family:var(--mono); font-size:11.5px; color:#7d8a83;}
+  #about .body{padding:16px 22px 6px;}
+  #about dl{display:grid; grid-template-columns:auto 1fr; gap:5px 14px; margin:0 0 14px;}
+  #about dt{font-size:12px; color:#7d8a83;}
+  #about dd{margin:0; font-size:13px;}
+  /* Two columns rather than three ragged lines: the roles line up under each other,
+     the way the licences do in the library list below. */
+  #about dd.credits{
+    display:grid; grid-template-columns:auto auto; justify-content:start;
+    align-items:baseline; column-gap:12px; row-gap:4px;
+  }
+  #about dd.credits .role{font-family:var(--mono); font-size:11px; color:#8a938c;}
+  #about h3{font-size:12px; color:#7d8a83; font-weight:500; margin:0 0 6px;}
+  #about ul{list-style:none; margin:0 0 4px; padding:0; font-size:12.5px;}
+  #about li{display:flex; justify-content:space-between; gap:12px; padding:4px 0; border-bottom:1px solid #f0ede4;}
+  #about li span:last-child{color:#7d8a83; font-family:var(--mono); font-size:11px; white-space:nowrap;}
+  #about a{color:var(--accent);}
+  #about .foot{
+    padding:13px 22px 17px; text-align:center; font-size:12.5px; color:#7d8a83;
+  }
+  #about .close{
+    position:absolute; top:12px; right:14px; border:none; background:none; cursor:pointer;
+    font-size:19px; line-height:1; color:#9aa39c; padding:2px 6px; border-radius:3px;
+  }
+  #about .close:hover{background:#f0ece1; color:var(--ink);}
+  #about .close:focus-visible{outline:2px solid var(--accent); outline-offset:1px;}
+
+  /* delete target while dragging a spot */
+  #panel.deleteTarget{background:#fdece7;}
+  #panel.deleteTarget #deleteHint{display:flex;}
+  #deleteHint{
+    position:absolute; inset:0; display:none; align-items:center; justify-content:center;
+    background:rgba(253,236,231,.92); border:2px dashed var(--warn); z-index:30;
+    color:var(--warn); font-weight:600; font-size:14px; text-align:center; padding:20px;
+    pointer-events:none;
+  }
+
+  /* Drag ghost. The container's origin is the pointer itself and both parts are placed
+     around it, so the icon stays centred on the cursor whatever size the photo is — laid
+     out in a flex row, the row's height is the photo's and the icon drifts below the
+     pointer by half of it. */
+  #ghost{position:fixed; z-index:60; pointer-events:none; display:none;}
+  #ghost.show{display:block;}
+  #ghost .gicon{
+    position:absolute; left:-9px; top:-9px; width:18px; height:18px;
+    filter:drop-shadow(0 1px 3px rgba(0,0,0,.5));
+  }
+  #ghost .gicon svg{display:block; width:100%; height:100%;}
+  #ghost img{
+    position:absolute; left:13px; top:-31px; width:62px; height:62px; object-fit:cover;
+    border-radius:3px; border:2px solid #fff; box-shadow:0 3px 12px rgba(0,0,0,.35);
+  }
+  #ghost img[hidden]{display:none;}
+
+  .snapGuide{
+    position:absolute; left:0; right:0; height:0; pointer-events:none;
+    border-top:1px dashed var(--accent); opacity:.85;
+  }
+  .snapGuide::after{
+    content:''; position:absolute; right:2px; top:-3px; width:5px; height:5px;
+    border-radius:50%; background:var(--accent);
+  }
+
+  #toast{
+    position:fixed; left:50%; bottom:26px; transform:translateX(-50%);
+    background:var(--ink); color:#fff; padding:9px 16px; border-radius:3px;
+    font-size:13px; z-index:80; display:none; max-width:60vw;
+  }
+  #toast.show{display:block;}
+  .hint{font-size:11.5px; color:#8a938c; margin-top:8px;}
+</style>
+</head>
+<body>
+
+<div id="app">
+  <section id="viewer">
+    <div id="viewerBar">
+      <div class="brand">
+        <svg aria-hidden="true" viewBox="0 0 32 32"><g transform="rotate(-8 16 16)"><rect x="11" y="3" width="10" height="5" rx="2.2" fill="#1a59bf"/><rect x="2.5" y="7" width="27" height="21" rx="4.5" fill="#1a59bf"/><circle cx="16" cy="17.5" r="7.3" fill="#ffffff"/><circle cx="16" cy="17.5" r="4.4" fill="#39b3f0"/><circle cx="24.3" cy="12" r="1.6" fill="#ffd166"/></g></svg>
+        <span class="wordmark">Photo Spot</span>
+        <span class="version">1.0.0</span>
+      </div>
+      <span class="name" id="pdfName">geen PDF geladen</span>
+      <button class="tbtn" id="otherPdfBtn" disabled>Andere PDF…</button>
+      <span class="spacer"></span>
+      <span class="grp">
+        pagina
+        <input id="pageJump" type="text" value="1" disabled />
+        <span id="pageTotal">/ –</span>
+      </span>
+      <span class="grp">
+        <button class="tbtn" id="zoomOut" disabled>−</button>
+        <span id="zoomLabel">—</span>
+        <button class="tbtn" id="zoomIn" disabled>+</button>
+        <button class="tbtn" id="fitWidth" disabled>Breedte</button>
+        <button class="tbtn" id="fitPage" disabled>Pagina</button>
+      </span>
+      <button class="tbtn" id="snapBtn" disabled aria-pressed="true"
+              title="Plaats een spot midden tussen twee horizontale lijnen">Uitlijnen</button>
+    </div>
+    <div id="rotateBanner" hidden></div>
+    <div id="viewerScroll">
+      <div id="pdfZone">
+        <div class="big">Sleep hier een PDF-bestand</div>
+        <div class="sub">of klik om er een te kiezen</div>
+      </div>
+      <div id="pages"></div>
+    </div>
+  </section>
+
+  <aside id="panel">
+    <div id="panelHead">
+      <h2>Foto's</h2>
+      <div class="count" id="imgCount">0 foto's — 0 spots geplaatst</div>
+    </div>
+    <div id="imgZone">
+      Sleep hier foto's of een map
+      <div class="row">
+        <button class="tbtn" id="addFilesBtn">Foto's toevoegen…</button>
+        <button class="tbtn" id="addDirBtn">Map toevoegen…</button>
+      </div>
+      <div class="hint">Sleep een foto uit de lijst op de PDF om een spot te plaatsen.</div>
+    </div>
+    <div id="imgList"></div>
+    <div id="panelFoot">
+      <label for="quality">Fotokwaliteit in de PDF</label>
+      <select id="quality">
+        <option value="high" selected>Hoog — max 1600 px (aanbevolen)</option>
+        <option value="original">Origineel — onbewerkt, grote bestanden</option>
+        <option value="compact">Compact — max 900 px</option>
+      </select>
+      <button id="exportBtn" disabled title="Plaats eerst minstens één spot">PDF exporteren</button>
+      <div id="progress"><div></div></div>
+      <div id="colophon">
+        <button type="button" id="aboutBtn">About</button>
+      </div>
+    </div>
+    <div id="deleteHint">Laat hier los om deze spot te verwijderen</div>
+  </aside>
+</div>
+
+<dialog id="about" tabindex="-1" autofocus>
+  <button type="button" class="close" id="aboutClose" aria-label="Sluiten">×</button>
+  <div class="head">
+    <svg aria-hidden="true" viewBox="0 0 32 32"><g transform="rotate(-8 16 16)"><rect x="11" y="3" width="10" height="5" rx="2.2" fill="#1a59bf"/><rect x="2.5" y="7" width="27" height="21" rx="4.5" fill="#1a59bf"/><circle cx="16" cy="17.5" r="7.3" fill="#ffffff"/><circle cx="16" cy="17.5" r="4.4" fill="#39b3f0"/><circle cx="24.3" cy="12" r="1.6" fill="#ffd166"/></g></svg>
+    <div>
+      <div class="name">Photo Spot</div>
+      <div class="ver">versie 1.0.0</div>
+    </div>
+  </div>
+  <div class="body">
+    <dl>
+      <dt>Auteur</dt>
+      <dd class="credits">
+        <span>Tim Plessers</span><span class="role">(concept)</span>
+        <span>Grill With Docs</span><span class="role">(specificatie)</span>
+        <span>Claude Code</span><span class="role">(implementatie)</span>
+      </dd>
+      <dt>Licentie</dt>
+      <dd><a href="https://www.apache.org/licenses/LICENSE-2.0" target="_blank" rel="noopener">Apache License 2.0</a></dd>
+    </dl>
+    <h3>Gebruikte bibliotheken</h3>
+    <ul>
+      <li><span><a href="https://mozilla.github.io/pdf.js/" target="_blank" rel="noopener">pdf.js 3.11.174</a></span><span>Apache 2.0</span></li>
+      <li><span><a href="https://pdf-lib.js.org/" target="_blank" rel="noopener">pdf-lib 1.17.1</a></span><span>MIT</span></li>
+      <li><span><a href="https://github.com/alexcorvi/heic2any" target="_blank" rel="noopener">heic2any 0.0.4</a></span><span>MIT</span></li>
+    </ul>
+  </div>
+  <div class="foot">Made with ❤️ in Belgium</div>
+</dialog>
+
+<div id="ghost"><span class="gicon"><svg viewBox="0 0 16 16"><rect x="4.48" y="0" width="7.04" height="4.48" fill="#1a59bf"/><rect x="0" y="4.48" width="16" height="11.52" fill="#1a59bf"/><rect x="4.48" y="6.4" width="7.04" height="7.04" fill="#fff"/><rect x="5.44" y="7.36" width="5.12" height="5.12" fill="#1a59bf"/></svg></span><img alt="" /></div>
+<div id="toast"></div>
+
+<input type="file" id="pdfInput" accept="application/pdf,.pdf" hidden />
+<input type="file" id="filesInput" accept="image/*,.heic,.heif" multiple hidden />
+<input type="file" id="dirInput" webkitdirectory directory multiple hidden />
+
+<script>
+"use strict";
+const { PDFDocument, PDFName, PDFString, PDFHexString, PDFDict, PDFArray } = PDFLib;
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+const IMG_RE = /\.(jpe?g|png|heic|heif|webp|gif|bmp|tiff?)$/i;
+const HEIC_RE = /\.(heic|heif)$/i;
+const ICON_PT = 8;           // icon edge length in PDF points
+const ICON_PAD_PT = 2;       // extra hit area around the icon in the export
+const MIN_ICON_PX = 12;      // never render the editor icon smaller than this
+const OVERLAP_PT = 20;       // two spots closer than this are flagged
+const SNAP_DARK = 150;       // a pixel this dark counts as ink
+const SNAP_FILL = 0.55;      // ...and a row this full of ink counts as a rule
+const SNAP_MIN_GAP = 9;      // ignore rules closer together than this (hairline pairs)
+const SNAP_MAX_GAP = 170;    // ...and further apart than this (page borders, not rows)
+const CARD_FRAC = 0.55;      // overlay photo fills at most this much of the page width
+const CARD_BAND_FRAC = 0.70; // ...and at most this much of the height a reader can see
+const VISIBLE_BAND = 0.62;   // a fit-to-width window shows roughly this much of a page,
+                             // which is what the card is sized against
+const CARD_PAD_PT = 10;
+const CLOSE_PT = 16;
+
+// ---------- session state ----------
+// A Spot stores its position in PDF user space (origin bottom-left, points), not
+// in screen pixels: zooming and scrolling then cost nothing, and export needs no
+// conversion at all.
+const state = {
+  pdfFile: null,
+  pdfBytes: null,          // original bytes, kept for pdf-lib at export time
+  pdfjsDoc: null,
+  pageSizes: [],           // {w,h} in points, per page
+  zoomMode: 'fitWidth',    // 'fitWidth' | 'fitPage' | number
+  scale: 1,
+  images: [],              // see addImages()
+  spots: [],               // {id, num, imageId, page, x, y}
+  snap: true,              // centre a dropped Spot between two horizontal rules
+};
+let nextImageId = 1, nextSpotId = 1;
+
+const $ = (id) => document.getElementById(id);
+const els = {
+  scroll: $('viewerScroll'), pages: $('pages'), pdfZone: $('pdfZone'),
+  panel: $('panel'), imgZone: $('imgZone'), imgList: $('imgList'),
+  ghost: $('ghost'), ghostImg: $('ghost').querySelector('img'),
+};
+
+function toast(msg, ms){
+  const t = $('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => t.classList.remove('show'), ms || 3200);
+}
+function fmtSize(n){
+  if (n > 1048576) return (n/1048576).toFixed(1) + ' MB';
+  if (n > 1024) return Math.round(n/1024) + ' kB';
+  return n + ' B';
+}
+
+// ---------- HEIC decoding ----------
+// Chrome cannot decode HEIC natively, so libheif (via heic2any, 1.3 MB) is pulled in
+// only once a HEIC file actually shows up, and runs in a worker: a 12 MP decode takes
+// seconds and would otherwise freeze the editor.
+//
+// The worker cannot fetch the library itself. A worker built from a blob URL has an
+// opaque origin, and importScripts() across origins from there is refused — which is
+// exactly what used to happen. The page may fetch it, though, so the source is fetched
+// here and built into the worker.
+//
+// Two shims come with it. heic2any is a UMD bundle that touches `window` while loading
+// and makes a `video` element to sniff for codec support; and it converts its decoded
+// pixels to a blob through a canvas, which a worker has no DOM to create. `window` maps
+// to the worker's own global, and `document.createElement` hands back an OffscreenCanvas
+// with a toBlob() of its own for the canvas case, and an inert object for the rest.
+const HEIC_LIB = 'https://cdnjs.cloudflare.com/ajax/libs/heic2any/0.0.4/heic2any.min.js';
+const HEIC_SHIM = `
+self.window = self;
+self.document = {
+  createElement: function(tag){
+    if (tag === 'canvas'){
+      var c = new OffscreenCanvas(1, 1);
+      c.toBlob = function(cb, type, q){ this.convertToBlob({ type: type, quality: q }).then(cb); };
+      c.style = {};
+      return c;
+    }
+    return { style: {}, canPlayType: function(){ return ''; }, setAttribute: function(){},
+             appendChild: function(){}, remove: function(){} };
+  },
+  body: { appendChild: function(){}, removeChild: function(){} },
+};`;
+const HEIC_GLUE = `
+self.onmessage = async (e) => {
+  const { id, blob } = e.data;
+  try {
+    const out = await self.heic2any({ blob, toType: 'image/jpeg', quality: 0.92 });
+    self.postMessage({ id, blob: Array.isArray(out) ? out[0] : out });
+  } catch (err) {
+    self.postMessage({ id, error: String((err && err.message) || err) });
+  }
+};`;
+
+let heicWorker = null, heicStarting = null, heicJobs = new Map(), heicJobId = 1, heicWarned = false;
+
+function heicWorkerReady(){
+  if (heicWorker) return Promise.resolve(heicWorker);
+  if (heicStarting) return heicStarting;
+  heicStarting = (async () => {
+    const res = await fetch(HEIC_LIB);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const src = await res.text();
+    const url = URL.createObjectURL(new Blob([HEIC_SHIM, '\n', src, '\n', HEIC_GLUE],
+                                             { type: 'text/javascript' }));
+    const w = new Worker(url);
+    w.onmessage = (e) => {
+      const job = heicJobs.get(e.data.id);
+      if (!job) return;
+      heicJobs.delete(e.data.id);
+      e.data.error ? job.reject(new Error(e.data.error)) : job.resolve(e.data.blob);
+    };
+    w.onerror = (e) => {
+      heicJobs.forEach(j => j.reject(new Error(e.message || 'HEIC-worker gestopt')));
+      heicJobs.clear();
+      e.preventDefault();
+    };
+    heicWorker = w;
+    return w;
+  })();
+  return heicStarting;
+}
+
+// Last resort: if the worker cannot be built at all, decode on the main thread. Slower
+// and it makes the page stutter, but a stuttering conversion beats none.
+async function heicDecodeHere(blob){
+  if (!window.heic2any){
+    if (!heicWarned){
+      heicWarned = true;
+      toast('HEIC-conversie draait in de voorgrond — de pagina kan even haperen.', 5000);
+    }
+    await new Promise((resolve, reject) => {
+      const tag = document.createElement('script');
+      tag.src = HEIC_LIB;
+      tag.onload = resolve;
+      tag.onerror = () => reject(new Error('heic2any kon niet geladen worden'));
+      document.head.appendChild(tag);
+    });
+  }
+  const out = await window.heic2any({ blob, toType: 'image/jpeg', quality: 0.92 });
+  return Array.isArray(out) ? out[0] : out;
+}
+
+async function heicDecode(blob){
+  let worker;
+  try {
+    worker = await heicWorkerReady();
+  } catch (e){
+    return heicDecodeHere(blob);         // only a failure to start falls back
+  }
+  const id = heicJobId++;
+  return new Promise((resolve, reject) => {
+    heicJobs.set(id, { resolve, reject });
+    worker.postMessage({ id, blob });
+  });
+}
+
+// ---------- image list ----------
+function naturalCmp(a, b){
+  return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+}
+function imageById(id){ return state.images.find(i => i.id === id); }
+function spotsOfImage(id){ return state.spots.filter(s => s.imageId === id); }
+
+async function addFiles(files){
+  const wanted = files.filter(f => IMG_RE.test(f.name));
+  const rejected = files.length - wanted.length;
+  let added = 0, dupes = 0;
+  for (const file of wanted){
+    if (state.images.some(i => i.name === file.name && i.size === file.size)){ dupes++; continue; }
+    state.images.push({
+      id: nextImageId++, file, name: file.name, size: file.size,
+      // status: 'converting' until HEIC is decoded, then 'ready'; 'error' is a dead row
+      status: HEIC_RE.test(file.name) ? 'converting' : 'ready',
+      blob: HEIC_RE.test(file.name) ? null : file,
+      thumbUrl: null, thumbRequested: false, error: null,
+    });
+    added++;
+  }
+  state.images.sort(naturalCmp);
+  renderImageList();
+  if (rejected) toast(rejected + ' bestand(en) overgeslagen — geen afbeelding.');
+  else if (dupes) toast(dupes + ' foto(\'s) stonden al in de lijst.');
+  else if (!added && !wanted.length) toast('Geen afbeeldingen gevonden.');
+
+  for (const img of state.images.filter(i => i.status === 'converting' && !i.blob)){
+    img.blob = 'pending';
+    heicDecode(img.file).then(blob => {
+      img.blob = blob; img.status = 'ready'; renderImageList();
+    }).catch(err => {
+      img.status = 'error'; img.error = err.message; img.blob = null; renderImageList();
+    });
+  }
+}
+
+// Chrome hands a dropped folder over as a FileSystemEntry tree; walk it so that
+// dropping a shoot folder works the same as picking one.
+//
+// Entries must be taken out of the DataTransfer synchronously — it is emptied the
+// moment the drop handler yields — and a plain file drop is not walked at all:
+// dataTransfer.files already holds everything, in every browser, with none of the
+// entry API's quirks.
+async function filesFromDataTransfer(dt){
+  const plain = Array.from(dt.files || []);
+  const entries = [];
+  if (dt.items && dt.items.length){
+    for (const item of Array.from(dt.items)){
+      const entry = item.webkitGetAsEntry ? item.webkitGetAsEntry() : null;
+      if (entry) entries.push(entry);
+    }
+  }
+  if (!entries.some(e => e.isDirectory)) return plain;
+  const out = [];
+  const walk = async (entry) => {
+    if (entry.isFile){
+      const f = await new Promise((res, rej) => entry.file(res, rej));
+      out.push(f);
+    } else if (entry.isDirectory){
+      const reader = entry.createReader();
+      for (;;){
+        const batch = await new Promise((res, rej) => reader.readEntries(res, rej));
+        if (!batch.length) break;
+        for (const e of batch) await walk(e);
+      }
+    }
+  };
+  for (const e of entries) await walk(e);
+  return out.length ? out : plain;
+}
+
+const thumbObserver = new IntersectionObserver((entries) => {
+  for (const entry of entries){
+    if (!entry.isIntersecting) continue;
+    const img = imageById(Number(entry.target.dataset.imageId));
+    thumbObserver.unobserve(entry.target);
+    if (img) makeThumb(img);
+  }
+}, { root: null, rootMargin: '120px' });
+
+async function makeThumb(img){
+  if (img.thumbRequested || img.status !== 'ready' || !img.blob) return;
+  img.thumbRequested = true;
+  try {
+    // imageOrientation:'from-image' applies the EXIF rotation flag; without it
+    // roughly half of a phone's photos arrive on their side.
+    const bmp = await createImageBitmap(img.blob, { imageOrientation: 'from-image' });
+    const side = 128;
+    const c = document.createElement('canvas');
+    c.width = c.height = side;
+    const ctx = c.getContext('2d');
+    const s = Math.max(side / bmp.width, side / bmp.height);
+    const w = bmp.width * s, h = bmp.height * s;
+    ctx.drawImage(bmp, (side - w) / 2, (side - h) / 2, w, h);
+    bmp.close();
+    const blob = await new Promise(res => c.toBlob(res, 'image/jpeg', 0.8));
+    if (img.thumbUrl) URL.revokeObjectURL(img.thumbUrl);
+    img.thumbUrl = URL.createObjectURL(blob);
+    const row = els.imgList.querySelector('[data-image-id="' + img.id + '"] .thumb');
+    if (row) row.src = img.thumbUrl;
+  } catch (e){
+    img.thumbRequested = false;
+  }
+}
+
+function renderImageList(){
+  els.imgList.innerHTML = '';
+  for (const img of state.images){
+    const placed = spotsOfImage(img.id).length;
+    const row = document.createElement('div');
+    row.className = 'imgRow' + (img.status === 'ready' ? '' : img.status === 'error' ? ' bad' : ' busy');
+    row.dataset.imageId = img.id;
+
+    const thumb = document.createElement('img');
+    thumb.className = 'thumb';
+    if (img.thumbUrl) thumb.src = img.thumbUrl;
+    row.appendChild(thumb);
+
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    const name = document.createElement('div');
+    name.className = 'fname'; name.textContent = img.name; name.title = img.name;
+    const sub = document.createElement('div');
+    sub.className = 'sub' + (placed ? ' placed' : '');
+    if (img.status === 'converting'){ sub.innerHTML = '<span class="spinner"></span> HEIC omzetten…'; }
+    else if (img.status === 'error'){ sub.textContent = 'mislukt: ' + img.error; }
+    else { sub.textContent = fmtSize(img.size) + (placed ? '  •  geplaatst ×' + placed : ''); }
+    meta.appendChild(name); meta.appendChild(sub);
+    row.appendChild(meta);
+
+    const rm = document.createElement('button');
+    rm.className = 'rm'; rm.textContent = '×'; rm.title = 'Uit de lijst verwijderen';
+    rm.addEventListener('pointerdown', e => e.stopPropagation());
+    rm.addEventListener('click', () => removeImage(img.id));
+    row.appendChild(rm);
+
+    if (img.status === 'ready'){
+      row.addEventListener('pointerdown', e => startDrag(e, { kind: 'new', imageId: img.id }));
+    }
+    els.imgList.appendChild(row);
+    if (!img.thumbUrl && img.status === 'ready') thumbObserver.observe(row);
+  }
+  $('imgCount').textContent =
+    state.images.length + " foto's — " + state.spots.length + ' spot' + (state.spots.length === 1 ? '' : 's') + ' geplaatst';
+  updateExportButton();
+}
+
+function removeImage(id){
+  const placed = spotsOfImage(id).length;
+  if (placed && !confirm('Deze foto staat ' + placed + '× op de PDF. Die spot' +
+      (placed === 1 ? '' : 's') + ' word' + (placed === 1 ? 't' : 'en') + ' dan ook verwijderd. Doorgaan?')) return;
+  const img = imageById(id);
+  if (img && img.thumbUrl) URL.revokeObjectURL(img.thumbUrl);
+  state.spots = state.spots.filter(s => s.imageId !== id);
+  state.images = state.images.filter(i => i.id !== id);
+  renumberSpots();
+  renderSpots();
+  renderImageList();
+}
+
+// ---------- PDF loading & rendering ----------
+const pageRecords = [];   // {box, canvas, layer, renderedScale, task}
+
+const pageObserver = new IntersectionObserver((entries) => {
+  for (const entry of entries){
+    const idx = Number(entry.target.dataset.page);
+    if (entry.isIntersecting) renderPage(idx);
+  }
+}, { root: els.scroll, rootMargin: '600px 0px' });
+
+async function loadPdf(file){
+  if (state.spots.length &&
+      !confirm('Er staan ' + state.spots.length + ' spots op de huidige PDF. Een andere PDF laden wist ze allemaal. Doorgaan?')) return;
+
+  const buf = await file.arrayBuffer();
+  state.pdfBytes = buf.slice(0);                       // pdf.js may detach what it is given
+  let doc;
+  try {
+    doc = await pdfjsLib.getDocument({ data: new Uint8Array(buf) }).promise;
+  } catch (e){
+    toast('Deze PDF kon niet geopend worden: ' + e.message, 6000);
+    return;
+  }
+
+  pageRecords.forEach(r => { if (r.task) r.task.cancel(); });
+  pageRecords.length = 0;
+  lineCache.clear();
+  els.pages.innerHTML = '';
+  state.spots = [];
+  state.pdfFile = file;
+  state.pdfjsDoc = doc;
+  state.pageSizes = [];
+  state.zoomMode = 'fitWidth';
+
+  const rotated = [];
+  for (let i = 0; i < doc.numPages; i++){
+    const page = await doc.getPage(i + 1);
+    const vp = page.getViewport({ scale: 1 });
+    state.pageSizes.push({ w: vp.width, h: vp.height });
+    if (page.rotate % 360 !== 0) rotated.push(i + 1);
+
+    const box = document.createElement('div');
+    box.className = 'pageBox';
+    box.dataset.page = String(i);
+    const canvas = document.createElement('canvas');
+    const layer = document.createElement('div');
+    layer.className = 'spotLayer';
+    const no = document.createElement('div');
+    no.className = 'pageNo';
+    no.textContent = 'pagina ' + (i + 1);
+    box.appendChild(canvas); box.appendChild(layer); box.appendChild(no);
+    els.pages.appendChild(box);
+    pageRecords.push({ box, canvas, layer, page, renderedScale: 0, task: null });
+    pageObserver.observe(box);
+  }
+
+  const banner = $('rotateBanner');
+  if (rotated.length){
+    banner.hidden = false;
+    banner.textContent = 'Let op: pagina ' + rotated.join(', ') + ' ' +
+      (rotated.length === 1 ? 'is' : 'zijn') + ' geroteerd. PhotoSpot rekent niet met paginarotatie — ' +
+      'de icoontjes kunnen op die pagina\'s op een andere plek terechtkomen dan waar je ze neerzet. Controleer de export.';
+  } else {
+    banner.hidden = true;
+  }
+
+  els.pdfZone.hidden = true;
+  $('pdfName').textContent = file.name;
+  $('pageTotal').textContent = '/ ' + doc.numPages;
+  ['otherPdfBtn','pageJump','zoomOut','zoomIn','fitWidth','fitPage','snapBtn'].forEach(id => $(id).disabled = false);
+  layout();
+  renderImageList();
+}
+
+function computeScale(){
+  if (!state.pageSizes.length) return 1;
+  const avail = els.scroll.clientWidth - 44;              // room for shadow + scrollbar
+  const availH = els.scroll.clientHeight - 50;
+  const maxW = Math.max(...state.pageSizes.map(p => p.w));
+  const maxH = Math.max(...state.pageSizes.map(p => p.h));
+  if (state.zoomMode === 'fitWidth') return Math.max(0.1, avail / maxW);
+  if (state.zoomMode === 'fitPage') return Math.max(0.1, Math.min(avail / maxW, availH / maxH));
+  return state.zoomMode;
+}
+
+function layout(){
+  lineCache.clear();
+  state.scale = computeScale();
+  $('zoomLabel').textContent = Math.round(state.scale * 100) + '%';
+  pageRecords.forEach((rec, i) => {
+    const size = state.pageSizes[i];
+    rec.box.style.width = Math.round(size.w * state.scale) + 'px';
+    rec.box.style.height = Math.round(size.h * state.scale) + 'px';
+    rec.renderedScale = 0;
+  });
+  renderVisiblePages();
+  renderSpots();
+}
+
+function renderVisiblePages(){
+  const top = els.scroll.scrollTop - 600, bottom = els.scroll.scrollTop + els.scroll.clientHeight + 600;
+  const dropTop = els.scroll.scrollTop - 4000, dropBottom = els.scroll.scrollTop + els.scroll.clientHeight + 4000;
+  pageRecords.forEach((rec, i) => {
+    const y = rec.box.offsetTop, y2 = y + rec.box.offsetHeight;
+    if (y2 >= top && y <= bottom) renderPage(i);
+    else if ((y2 < dropTop || y > dropBottom) && rec.renderedScale){
+      // Far out of sight: hand the bitmap back rather than keep every page ever
+      // scrolled past alive at full zoom.
+      if (rec.task){ try { rec.task.cancel(); } catch(e){} rec.task = null; }
+      rec.canvas.width = rec.canvas.height = 0;
+      rec.renderedScale = 0;
+    }
+  });
+}
+
+function renderPage(idx){
+  const rec = pageRecords[idx];
+  if (!rec || rec.renderedScale === state.scale) return;
+  rec.renderedScale = state.scale;
+  if (rec.task){ try { rec.task.cancel(); } catch(e){} rec.task = null; }
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const vp = rec.page.getViewport({ scale: state.scale * dpr });
+  rec.canvas.width = Math.floor(vp.width);
+  rec.canvas.height = Math.floor(vp.height);
+  const task = rec.page.render({ canvasContext: rec.canvas.getContext('2d'), viewport: vp });
+  rec.task = task;
+  task.promise.then(() => { rec.task = null; }).catch(() => { rec.renderedScale = 0; });
+}
+
+// ---------- spots ----------
+function renumberSpots(){ state.spots.forEach((s, i) => { s.num = i + 1; }); }
+
+function isOverlapping(spot){
+  return state.spots.some(o => o !== spot && o.page === spot.page &&
+    Math.abs(o.x - spot.x) < OVERLAP_PT && Math.abs(o.y - spot.y) < OVERLAP_PT);
+}
+
+const SPOT_SVG =
+  '<svg viewBox="0 0 16 16">' +
+  '<rect x="4.48" y="0" width="7.04" height="4.48" fill="#1a59bf"/>' +
+  '<rect x="0" y="4.48" width="16" height="11.52" fill="#1a59bf"/>' +
+  '<rect x="4.48" y="6.4" width="7.04" height="7.04" fill="#fff"/>' +
+  '<rect x="5.44" y="7.36" width="5.12" height="5.12" fill="#1a59bf"/>' +
+  '</svg>';
+
+function renderSpots(){
+  pageRecords.forEach(rec => { rec.layer.innerHTML = ''; });
+  const px = Math.max(MIN_ICON_PX, ICON_PT * state.scale);
+  for (const spot of state.spots){
+    const rec = pageRecords[spot.page];
+    if (!rec) continue;
+    const size = state.pageSizes[spot.page];
+    const el = document.createElement('div');
+    el.className = 'spot' + (isOverlapping(spot) ? ' overlapping' : '');
+    el.style.width = el.style.height = px + 'px';
+    el.style.left = (spot.x * state.scale - px / 2) + 'px';
+    el.style.top = ((size.h - spot.y) * state.scale - px / 2) + 'px';
+    el.dataset.spotId = spot.id;
+    const img = imageById(spot.imageId);
+    el.title = 'Spot ' + spot.num + ' — ' + (img ? img.name : '?') +
+               '\nSleep naar de fotolijst om te verwijderen.';
+    el.innerHTML = SPOT_SVG + '<span class="badge">' + spot.num + '</span>';
+    el.addEventListener('pointerdown', e => startDrag(e, { kind: 'move', spotId: spot.id }));
+    rec.layer.appendChild(el);
+  }
+  updateExportButton();
+}
+
+function updateExportButton(){
+  const ready = !!state.pdfFile && state.spots.length > 0;
+  $('exportBtn').disabled = !ready;
+  $('exportBtn').title = ready ? '' : 'Laad een PDF en plaats minstens één spot';
+}
+
+// ---------- snapping between horizontal rules ----------
+// The rules are found in the rendered page rather than in the PDF's drawing operators.
+// That reads the page the way the user sees it: a table drawn with vector strokes and a
+// scanned form photographed at an angle both end up as dark rows of pixels, and only the
+// first of those has operators to inspect. The page canvas is already on screen, so this
+// costs one read, cached per page and zoom level.
+const lineCache = new Map();
+
+function horizontalLines(pageIdx){
+  const rec = pageRecords[pageIdx];
+  if (!rec || !rec.canvas.width || !rec.canvas.height) return [];
+  const key = pageIdx + ':' + rec.canvas.width + 'x' + rec.canvas.height;
+  if (lineCache.has(key)) return lineCache.get(key);
+
+  const { width: w, height: h } = rec.canvas;
+  let data;
+  try {
+    data = rec.canvas.getContext('2d').getImageData(0, 0, w, h).data;
+  } catch (e){
+    return [];                                   // nothing readable: no snapping, no fuss
+  }
+  const step = 2;                                // every other pixel is plenty
+  const perRow = Math.ceil(w / step);
+  const runs = [];
+  let runStart = -1;
+  for (let y = 0; y < h; y++){
+    let dark = 0;
+    const base = y * w * 4;
+    for (let x = 0; x < w; x += step){
+      const i = base + x * 4;
+      if (data[i] < SNAP_DARK && data[i+1] < SNAP_DARK && data[i+2] < SNAP_DARK) dark++;
+    }
+    const inked = dark / perRow >= SNAP_FILL;
+    if (inked && runStart < 0) runStart = y;
+    // A rule is a run of inked rows; its centre is the line. A thick run is a filled
+    // band (a shaded header, a photo) rather than a rule, so it is dropped.
+    else if (!inked && runStart >= 0){
+      if (y - runStart <= Math.max(3, h * 0.01)) runs.push((runStart + y - 1) / 2);
+      runStart = -1;
+    }
+  }
+  if (runStart >= 0 && h - runStart <= Math.max(3, h * 0.01)) runs.push((runStart + h - 1) / 2);
+
+  const pageH = state.pageSizes[pageIdx].h;
+  const pxPerPt = h / pageH;
+  const lines = runs.map(yPx => pageH - yPx / pxPerPt).sort((a, b) => a - b);
+  lineCache.set(key, lines);
+  return lines;
+}
+
+// Returns the y a Spot should take, and whether that came from a snap.
+function snapToRow(pageIdx, yPt){
+  if (!state.snap) return { y: yPt, snapped: false };
+  const lines = horizontalLines(pageIdx);
+  if (lines.length < 2) return { y: yPt, snapped: false };
+  let below = null, above = null;
+  for (const l of lines){
+    if (l <= yPt && (below === null || l > below)) below = l;
+    if (l >= yPt && (above === null || l < above)) above = l;
+  }
+  if (below === null || above === null) return { y: yPt, snapped: false };
+  const gap = above - below;
+  if (gap < SNAP_MIN_GAP || gap > SNAP_MAX_GAP) return { y: yPt, snapped: false };
+  return { y: (above + below) / 2, snapped: true };
+}
+
+function showSnapGuide(pageIdx, yPt){
+  clearSnapGuide();
+  const rec = pageRecords[pageIdx];
+  if (!rec) return;
+  const guide = document.createElement('div');
+  guide.className = 'snapGuide';
+  guide.style.top = ((state.pageSizes[pageIdx].h - yPt) * state.scale) + 'px';
+  rec.layer.appendChild(guide);
+}
+function clearSnapGuide(){
+  els.pages.querySelectorAll('.snapGuide').forEach(el => el.remove());
+}
+
+// ---------- dragging ----------
+// One pointer-driven mechanism for both gestures: dragging a photo out of the list
+// creates a Spot, dragging a Spot moves it — or, released over the photo list,
+// destroys it. A release outside the window is not a target, so it snaps back.
+let drag = null, autoScrollRaf = null, autoScrollDy = 0;
+
+function startDrag(e, cfg){
+  if (e.button !== 0 || !state.pdfFile) return;
+  e.preventDefault();
+  const img = cfg.kind === 'new'
+    ? imageById(cfg.imageId)
+    : imageById((state.spots.find(s => s.id === cfg.spotId) || {}).imageId);
+  drag = {
+    ...cfg, started: false, x0: e.clientX, y0: e.clientY,
+    thumb: img && img.thumbUrl, pointerId: e.pointerId,
+  };
+  window.addEventListener('pointermove', onDragMove);
+  window.addEventListener('pointerup', onDragEnd);
+  window.addEventListener('pointercancel', cancelDrag);
+}
+
+function onDragMove(e){
+  if (!drag) return;
+  if (!drag.started){
+    if (Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0) < 4) return;
+    drag.started = true;
+    if (drag.thumb){ els.ghostImg.src = drag.thumb; els.ghostImg.hidden = false; }
+    else els.ghostImg.hidden = true;
+    els.ghost.classList.add('show');
+    if (drag.kind === 'move'){
+      const el = els.pages.querySelector('[data-spot-id="' + drag.spotId + '"]');
+      if (el) el.classList.add('dragging');
+      els.panel.classList.add('deleteTarget');
+    }
+  }
+  els.ghost.style.left = e.clientX + 'px';
+  els.ghost.style.top = e.clientY + 'px';
+
+  const preview = pageHitAt(e.clientX, e.clientY);
+  if (preview && preview.snapped) showSnapGuide(preview.page, preview.y);
+  else clearSnapGuide();
+
+  const r = els.scroll.getBoundingClientRect();
+  const edge = 70;
+  if (e.clientX > r.left && e.clientX < r.right){
+    if (e.clientY < r.top + edge) autoScrollDy = -Math.ceil((r.top + edge - e.clientY) / 4);
+    else if (e.clientY > r.bottom - edge) autoScrollDy = Math.ceil((e.clientY - r.bottom + edge) / 4);
+    else autoScrollDy = 0;
+  } else autoScrollDy = 0;
+  if (autoScrollDy && !autoScrollRaf) autoScrollRaf = requestAnimationFrame(autoScrollStep);
+}
+
+function autoScrollStep(){
+  autoScrollRaf = null;
+  if (!drag || !autoScrollDy) return;
+  els.scroll.scrollTop += autoScrollDy;
+  autoScrollRaf = requestAnimationFrame(autoScrollStep);
+}
+
+function pageHitAt(clientX, clientY){
+  const el = document.elementFromPoint(clientX, clientY);
+  const box = el && el.closest ? el.closest('.pageBox') : null;
+  if (!box) return null;
+  const idx = Number(box.dataset.page);
+  const r = box.getBoundingClientRect();
+  const size = state.pageSizes[idx];
+  const half = ICON_PT / 2;
+  const rawY = size.h - (clientY - r.top) / state.scale;
+  const snap = snapToRow(idx, rawY);
+  return {
+    page: idx,
+    x: Math.min(size.w - half, Math.max(half, (clientX - r.left) / state.scale)),
+    y: Math.min(size.h - half, Math.max(half, snap.y)),
+    snapped: snap.snapped,
+  };
+}
+
+function onDragEnd(e){
+  if (!drag) return;
+  const d = drag;
+  const inWindow = e.clientX >= 0 && e.clientY >= 0 &&
+                   e.clientX <= window.innerWidth && e.clientY <= window.innerHeight;
+  finishDrag();
+  if (!d.started || !inWindow) return;
+
+  const hit = pageHitAt(e.clientX, e.clientY);
+  if (hit){
+    if (d.kind === 'new'){
+      state.spots.push({ id: nextSpotId++, num: state.spots.length + 1,
+                         imageId: d.imageId, page: hit.page, x: hit.x, y: hit.y });
+    } else {
+      const spot = state.spots.find(s => s.id === d.spotId);
+      if (spot){ spot.page = hit.page; spot.x = hit.x; spot.y = hit.y; }
+    }
+    renumberSpots(); renderSpots(); renderImageList();
+    if (state.spots.some(isOverlapping)) toast('Twee spots staan vlak op elkaar — in Adobe Reader is er dan maar één klikbaar.', 4500);
+    return;
+  }
+  const overPanel = els.panel.contains(document.elementFromPoint(e.clientX, e.clientY));
+  if (d.kind === 'move' && overPanel){
+    const spot = state.spots.find(s => s.id === d.spotId);
+    state.spots = state.spots.filter(s => s.id !== d.spotId);
+    renumberSpots(); renderSpots(); renderImageList();
+    if (spot) toast('Spot verwijderd.');
+  }
+}
+
+function cancelDrag(){ finishDrag(); }
+
+function finishDrag(){
+  window.removeEventListener('pointermove', onDragMove);
+  window.removeEventListener('pointerup', onDragEnd);
+  window.removeEventListener('pointercancel', cancelDrag);
+  els.ghost.classList.remove('show');
+  clearSnapGuide();
+  els.panel.classList.remove('deleteTarget');
+  els.pages.querySelectorAll('.spot.dragging').forEach(el => el.classList.remove('dragging'));
+  autoScrollDy = 0;
+  if (autoScrollRaf){ cancelAnimationFrame(autoScrollRaf); autoScrollRaf = null; }
+  drag = null;
+}
+
+// ---------- pdf-lib low-level OCG helpers (from foto_toggle_tool.html) ----------
+// Resolve dict[key] to an object of the given type, or undefined. Uses the untyped
+// lookup on purpose: the typed one throws when the entry is missing or has an
+// unexpected type, and here "missing or odd" simply means "create it".
+function resolveTyped(ctx, dict, key, Type){
+  const raw = dict.get(PDFName.of(key));
+  if (raw === undefined) return undefined;
+  const value = ctx.lookup(raw);
+  return value instanceof Type ? value : undefined;
+}
+function ensureEntry(ctx, dict, key, Type, empty){
+  let value = resolveTyped(ctx, dict, key, Type);
+  if (!value){
+    value = ctx.obj(empty);
+    dict.set(PDFName.of(key), value);
+  }
+  return value;
+}
+// A PDF that already carries layers can have any subset of these entries:
+// /OCProperties with a /D config that has /ON but no /OFF, or no /D at all, are both
+// common. Normalize whatever is there rather than assuming our own shape.
+function getOrCreateOCProperties(pdfDoc){
+  const ctx = pdfDoc.context;
+  const ocProps = ensureEntry(ctx, pdfDoc.catalog, 'OCProperties', PDFDict, {});
+  const ocgs = ensureEntry(ctx, ocProps, 'OCGs', PDFArray, []);
+  const dDict = ensureEntry(ctx, ocProps, 'D', PDFDict, {});
+  ensureEntry(ctx, dDict, 'ON', PDFArray, []);
+  const off = ensureEntry(ctx, dDict, 'OFF', PDFArray, []);
+  if (dDict.get(PDFName.of('BaseState')) === undefined){
+    dDict.set(PDFName.of('BaseState'), PDFName.of('ON'));
+  }
+  return { ocProps, ocgs, off, dDict };
+}
+// The name arrives already reduced to escape-free ASCII by layerSafe(), so it can be
+// written as a plain literal string — exactly what the script will compare against.
+function addHiddenLayer(pdfDoc, name){
+  const ctx = pdfDoc.context;
+  const ocgDict = ctx.obj({ Type: PDFName.of('OCG'), Name: PDFString.of(name) });
+  const ocgRef = ctx.register(ocgDict);
+  const { ocgs, off } = getOrCreateOCProperties(pdfDoc);
+  ocgs.push(ocgRef);
+  off.push(ocgRef);
+  return ocgRef;
+}
+function addOCGResourceToPage(pdfDoc, page, ocgRef, resName){
+  const ctx = pdfDoc.context;
+  const resources = page.node.normalizedEntries().Resources;
+  let properties = resources.lookupMaybe(PDFName.of('Properties'), PDFDict);
+  if (!properties){ properties = ctx.obj({}); resources.set(PDFName.of('Properties'), properties); }
+  properties.set(PDFName.of(resName), ocgRef);
+}
+// An /OC entry ties the annotation to an optional-content group: while that layer is
+// hidden, so is the hotspot. Without it a close button would stay clickable over blank
+// paper and toggle its own overlay back on.
+function addLinkAnnotationWithJS(pdfDoc, page, rect, js, ocgRef){
+  const ctx = pdfDoc.context;
+  const annotDict = ctx.obj({
+    Type: PDFName.of('Annot'), Subtype: PDFName.of('Link'),
+    Rect: rect, Border: [0,0,0],
+    A: { S: PDFName.of('JavaScript'), JS: PDFString.of(js) },
+  });
+  if (ocgRef) annotDict.set(PDFName.of('OC'), ocgRef);
+  page.node.addAnnot(ctx.register(annotDict));
+}
+function addRawContentStream(pdfDoc, page, contentString){
+  const streamObj = pdfDoc.context.stream(contentString, {});
+  const streamRef = pdfDoc.context.register(streamObj);
+  page.node.addContentStream(streamRef);
+}
+// The blue photo icon, drawn as vectors so it stays crisp at any zoom.
+function iconOps(x, y, size){
+  const h = size, w = size;
+  return `
+0.1 0.35 0.75 rg
+${x} ${y} ${w} ${h*0.72} re f
+${x + w*0.28} ${y + h*0.72} ${w*0.44} ${h*0.28} re f
+1 1 1 rg
+${x + w*0.28} ${y + h*0.16} ${w*0.44} ${h*0.44} re f
+0.1 0.35 0.75 rg
+${x + w*0.34} ${y + h*0.22} ${w*0.32} ${h*0.32} re f`;
+}
+
+// Acrobat matches layers by name, and every name travels twice: once as the OCG's
+// /Name, once as a literal inside the toggle script. A PDF literal string silently
+// drops any backslash escape the spec does not recognise (PDF 32000-1, table 3), so a
+// script written as "caf\u00e9.jpg" reaches the JS engine as "cafu00e9.jpg" and the
+// comparison fails without a word — and an escaped quote would break the script
+// outright. Layer names are therefore reduced to characters that need no escaping at
+// all: no backslash, no quote, no parenthesis, nothing outside ASCII.
+function layerSafe(text){
+  return text.normalize('NFD').replace(/[\u0300-\u036f]/g, '')     // café → cafe
+             .replace(/[^A-Za-z0-9 ._-]+/g, '_')
+             .replace(/_{2,}/g, '_').trim() || 'foto';
+}
+// Applied on both sides on purpose: the literal in the script and the name on the
+// layer can then never drift apart, whatever the filename does.
+function jsString(s){ return '"' + layerSafe(s) + '"'; }
+
+// ---------- image preparation ----------
+function jpegOrientation(buf){
+  try {
+    const view = new DataView(buf);
+    if (view.getUint16(0) !== 0xFFD8) return 1;
+    let off = 2;
+    while (off + 4 <= view.byteLength){
+      const marker = view.getUint16(off); off += 2;
+      if ((marker & 0xFF00) !== 0xFF00) break;
+      const len = view.getUint16(off);
+      if (marker === 0xFFE1 && view.getUint32(off + 2) === 0x45786966){
+        const tiff = off + 8;
+        const little = view.getUint16(tiff) === 0x4949;
+        const ifd = tiff + view.getUint32(tiff + 4, little);
+        const count = view.getUint16(ifd, little);
+        for (let i = 0; i < count; i++){
+          const entry = ifd + 2 + i * 12;
+          if (view.getUint16(entry, little) === 0x0112) return view.getUint16(entry + 8, little);
+        }
+        return 1;
+      }
+      off += len;
+    }
+  } catch (e){ /* not our problem: fall through to "upright" */ }
+  return 1;
+}
+
+async function reencodeJpeg(blob, maxDim, quality){
+  const bmp = await createImageBitmap(blob, { imageOrientation: 'from-image' });
+  let w = bmp.width, h = bmp.height;
+  if (maxDim && Math.max(w, h) > maxDim){
+    const s = maxDim / Math.max(w, h);
+    w = Math.max(1, Math.round(w * s)); h = Math.max(1, Math.round(h * s));
+  }
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h);   // JPEG has no alpha
+  ctx.drawImage(bmp, 0, 0, w, h);
+  bmp.close();
+  const out = await new Promise(res => c.toBlob(res, 'image/jpeg', quality));
+  return { bytes: new Uint8Array(await out.arrayBuffer()), png: false };
+}
+
+const QUALITY = {
+  original: { maxDim: 0,    quality: 0.95 },
+  high:     { maxDim: 1600, quality: 0.85 },
+  compact:  { maxDim: 900,  quality: 0.70 },
+};
+
+async function prepareImage(img, mode){
+  const q = QUALITY[mode];
+  const blob = img.blob;
+  if (mode === 'original'){
+    const buf = await blob.arrayBuffer();
+    const isPng = /^image\/png$/i.test(blob.type) || /\.png$/i.test(img.name);
+    // Untouched bytes are only safe when nothing has to be baked in: a PNG has no
+    // orientation flag, and a JPEG marked upright needs no rewrite either.
+    if (isPng) return { bytes: new Uint8Array(buf), png: true };
+    if (/^image\/jpe?g$/i.test(blob.type) && jpegOrientation(buf) === 1){
+      return { bytes: new Uint8Array(buf), png: false };
+    }
+  }
+  return reencodeJpeg(blob, q.maxDim, q.quality);
+}
+
+// ---------- export ----------
+// A photo's pixel dimensions have no bearing on how large it is drawn — the size is set
+// here, in points, and a 48 MP original occupies exactly as much paper as a 2 MP one.
+// What makes a card feel oversized is that it is sized against the *page* while the
+// reader is looking at a window: at fit-to-width, which is how most people read, a
+// portrait page is taller than the screen and only a landscape band of it is visible.
+// So the card is measured against that band rather than against the paper.
+//
+// And it is centred on the Spot, not on the page. The reader has just clicked that
+// point, so it is by definition what they are looking at — which is what puts the photo
+// on screen, with no view to move and nothing jumping. Near an edge the card slides
+// inwards to stay on the paper.
+function clampTo(v, lo, hi){ return Math.max(lo, Math.min(v, Math.max(lo, hi))); }
+function cardGeometry(iw, ih, pw, ph, atX, atY){
+  const bandH = Math.min(ph, pw * VISIBLE_BAND);
+  const maxW = pw * CARD_FRAC, maxH = bandH * CARD_BAND_FRAC;
+  let w = maxW, h = w * ih / iw;
+  if (h > maxH){ h = maxH; w = h * iw / ih; }
+  const edge = CARD_PAD_PT + 6;                  // room for the border and its shadow
+  return {
+    w, h,
+    x0: clampTo(atX - w / 2, edge, pw - w - edge),
+    y0: clampTo(atY - h / 2, edge, ph - h - edge),
+  };
+}
+
+async function exportPdf(){
+  const btn = $('exportBtn');
+  btn.disabled = true;
+  const bar = $('progress');
+  bar.classList.add('show');
+  const fill = bar.firstElementChild;
+  const setProgress = (n, total) => { fill.style.width = Math.round(100 * n / total) + '%'; };
+
+  try {
+    const pdfDoc = await PDFDocument.load(new Uint8Array(state.pdfBytes.slice(0)));
+    const mode = $('quality').value;
+
+    // Names have to exist before any script is written: each Spot's toggle must be
+    // able to name the siblings it switches off.
+    const names = new Map();
+    for (const spot of state.spots){
+      const img = imageById(spot.imageId);
+      names.set(spot.id, layerSafe('Foto ' + spot.num + ' - ' + (img ? img.name : 'onbekend')));
+    }
+    const siblings = new Map();   // page -> [names]
+    for (const spot of state.spots){
+      if (!siblings.has(spot.page)) siblings.set(spot.page, []);
+      siblings.get(spot.page).push(names.get(spot.id));
+    }
+
+    const { ocProps, ocgs: allOcgs, dDict } = getOrCreateOCProperties(pdfDoc);
+    const preExisting = allOcgs.asArray().slice();
+    const ourRefs = [];
+    const embedded = new Map();   // imageId -> pdf-lib image, so a reused photo is stored once
+    const drawQueue = [];
+    let done = 0, failed = 0;
+
+    for (const spot of state.spots){
+      const img = imageById(spot.imageId);
+      try {
+        if (!img || !img.blob) throw new Error('foto niet meer beschikbaar');
+        if (!embedded.has(spot.imageId)){
+          const prepared = await prepareImage(img, mode);
+          embedded.set(spot.imageId, prepared.png
+            ? await pdfDoc.embedPng(prepared.bytes)
+            : await pdfDoc.embedJpg(prepared.bytes));
+        }
+        const image = embedded.get(spot.imageId);
+        const page = pdfDoc.getPage(spot.page);
+        const { width: pw, height: ph } = page.getSize();
+        const suffix = spot.num;
+
+        const imgResName = 'PSImg' + suffix;
+        page.node.normalizedEntries().Resources.lookup(PDFName.of('XObject'), PDFDict)
+          .set(PDFName.of(imgResName), image.ref);
+
+        const layerName = names.get(spot.id);
+        const ocgRef = addHiddenLayer(pdfDoc, layerName);
+        ourRefs.push(ocgRef);
+        const ocgResName = 'PSOC' + suffix;
+        addOCGResourceToPage(pdfDoc, page, ocgRef, ocgResName);
+
+        const half = ICON_PT / 2;
+        const ix = spot.x - half, iy = spot.y - half;   // the drop point is the icon's centre
+        const base = `
+q
+${iconOps(ix, iy, ICON_PT)}
+Q
+`;
+        const geo = cardGeometry(image.width, image.height, pw, ph, spot.x, spot.y);
+        const pad = CARD_PAD_PT;
+        const closeX0 = geo.x0 + 4, closeY0 = geo.y0 + geo.h - CLOSE_PT - 4;
+        const closeX1 = closeX0 + CLOSE_PT, closeY1 = closeY0 + CLOSE_PT;
+        const overlay = `
+/OC /${ocgResName} BDC
+q
+0.4 0.4 0.4 rg
+${geo.x0 + 4} ${geo.y0 - 4} ${geo.w} ${geo.h} re f
+1 1 1 rg
+${geo.x0 - pad} ${geo.y0 - pad} ${geo.w + 2*pad} ${geo.h + 2*pad} re f
+0 0 0 RG
+0.75 w
+${geo.x0 - pad} ${geo.y0 - pad} ${geo.w + 2*pad} ${geo.h + 2*pad} re S
+q
+${geo.w} 0 0 ${geo.h} ${geo.x0} ${geo.y0} cm
+/${imgResName} Do
+Q
+1 0.2 0.2 rg
+${closeX0} ${closeY0} ${CLOSE_PT} ${CLOSE_PT} re f
+1 1 1 RG
+1.4 w
+${closeX0+3} ${closeY0+3} m ${closeX1-3} ${closeY1-3} l S
+${closeX0+3} ${closeY1-3} m ${closeX1-3} ${closeY0+3} l S
+Q
+EMC
+`;
+        // Queued rather than drawn now: every icon has to be painted before any
+        // overlay, or a later spot's icon lands on top of an open photo.
+        drawQueue.push({ page, label: layerName, base, overlay });
+
+        // One photo at a time per page: this spot's layer flips, every other layer on
+        // the page is switched off.
+        //
+        // Nothing else belongs in this script. Moving the reader's view used to be done
+        // here too, and that cost the whole feature: everything in one script shares one
+        // fate, so whatever Acrobat disliked about the view code took the toggle down
+        // with it and clicking a Spot did nothing at all. The view move is now a
+        // separate PDF action (below) that cannot touch this one.
+        const others = (siblings.get(spot.page) || []).filter(n => n !== layerName);
+        const toggleJs =
+          'var o=this.getOCGs();var me=' + jsString(layerName) + ';' +
+          'var sib=[' + others.map(jsString).join(',') + '];' +
+          'for(var i=0;i<o.length;i++){var n=o[i].name;' +
+          'if(n==me){o[i].state=!o[i].state;}' +
+          'else{for(var j=0;j<sib.length;j++){if(n==sib[j]){o[i].state=false;}}}}';
+        const closeJs =
+          'var o=this.getOCGs();var me=' + jsString(layerName) + ';' +
+          'for(var i=0;i<o.length;i++){if(o[i].name==me){o[i].state=false;}}';
+
+        // Clicking a Spot shows the photo and does nothing else. Moving the reader's
+        // view was tried — a /GoTo chained after the script, to centre the card in the
+        // window — and it reads as the document jumping under your hands. The card is
+        // sized to fit the visible band anyway, so it lands on screen without any help.
+        const p = ICON_PAD_PT;
+        addLinkAnnotationWithJS(pdfDoc, page, [ix - p, iy - p, ix + ICON_PT + p, iy + ICON_PT + p],
+                                toggleJs);
+        addLinkAnnotationWithJS(pdfDoc, page, [closeX0, closeY0, closeX1, closeY1], closeJs, ocgRef);
+
+      } catch (err){
+        failed++;
+        console.warn('Spot ' + spot.num + ' — ' + ((img && img.name) || '?') + ' mislukt:', err);
+      }
+      setProgress(++done, state.spots.length);
+      await new Promise(r => setTimeout(r, 0));   // let the progress bar actually paint
+    }
+
+    for (const item of drawQueue){
+      try { addRawContentStream(pdfDoc, item.page, item.base); }
+      catch (e){ failed++; console.warn(item.label + ' → icoontje tekenen mislukt:', e); }
+    }
+    for (const item of drawQueue){
+      try { addRawContentStream(pdfDoc, item.page, item.overlay); }
+      catch (e){ failed++; console.warn(item.label + ' → overlay tekenen mislukt:', e); }
+    }
+
+    if (!ourRefs.length){
+      toast('Geen enkele spot kon verwerkt worden — er is niets geëxporteerd.', 6000);
+      btn.disabled = false;
+      return;
+    }
+
+    // Group our layers under one entry so Acrobat's Layers panel stays readable, and
+    // keep any layers the original document already had listed beside it.
+    const ctx = pdfDoc.context;
+    const order = ensureEntry(ctx, dDict, 'Order', PDFArray, []);
+    if (order.size() === 0) preExisting.forEach(ref => order.push(ref));
+    const group = ctx.obj([PDFHexString.fromText("Foto's"), ...ourRefs]);
+    order.push(group);
+    ocProps.set(PDFName.of('D'), dDict);
+
+    const outBytes = await pdfDoc.save();
+    const blob = new Blob([outBytes], { type: 'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = state.pdfFile.name.replace(/\.pdf$/i, '') + '-fotos.pdf';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+
+    const placed = state.spots.length - failed;
+    toast('Klaar: ' + placed + ' foto' + (placed === 1 ? '' : "'s") + ' in ' + a.download +
+          ' (' + fmtSize(outBytes.length) + ')' +
+          (failed ? ' — ' + failed + ' overgeslagen, zie de console' : ''), 6000);
+  } catch (err){
+    console.error(err);
+    toast('Export mislukt: ' + err.message, 6000);
+  } finally {
+    bar.classList.remove('show');
+    fill.style.width = '0';
+    btn.disabled = false;
+    updateExportButton();
+  }
+}
+
+// ---------- wiring ----------
+// Drops are taken at the window rather than per zone, and the drag is always accepted.
+// Two reasons. A drop that lands a few pixels off — on the toolbar, in the gutter
+// beside a page, on the warning banner — is obviously meant for the pane it is over,
+// and losing it looks like the tool is broken. And a drag must be accepted during
+// dragover or the browser navigates to the dropped file instead, replacing the whole
+// editor; deciding that from dataTransfer.types means trusting every browser to
+// describe a file drag identically, which they do not. Nothing else here uses HTML5
+// drag-and-drop — Spots move on pointer events — so there is nothing to be confused
+// with.
+const dropTargetFor = (x, y) => els.panel.contains(document.elementFromPoint(x, y)) ? 'images' : 'pdf';
+
+function markDropZone(kind){
+  els.imgZone.classList.toggle('drag', kind === 'images');
+  els.panel.classList.toggle('drag', kind === 'images');
+  els.pdfZone.classList.toggle('drag', kind === 'pdf');
+  els.scroll.classList.toggle('drag', kind === 'pdf');
+}
+
+['dragenter','dragover'].forEach(ev => window.addEventListener(ev, e => {
+  if (drag) return;                                   // one of our own Spot drags
+  e.preventDefault();
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+  markDropZone(dropTargetFor(e.clientX, e.clientY));
+}, true));
+['dragleave','dragend'].forEach(ev => window.addEventListener(ev, e => {
+  if (e.relatedTarget) return;                        // still inside the window
+  markDropZone(null);
+}, true));
+
+window.addEventListener('drop', async e => {
+  if (drag) return;
+  e.preventDefault();
+  markDropZone(null);
+  if (!e.dataTransfer) return;
+  const where = dropTargetFor(e.clientX, e.clientY);
+  const files = await filesFromDataTransfer(e.dataTransfer);
+  const pdf = files.find(f => /\.pdf$/i.test(f.name) || f.type === 'application/pdf');
+  const images = files.filter(f => IMG_RE.test(f.name));
+  // Forgiving on purpose: a PDF loads wherever it lands, and photos dropped on the
+  // document still reach the list rather than vanishing.
+  if (where === 'images' && images.length) addFiles(files);
+  else if (pdf) loadPdf(pdf);
+  else if (images.length){
+    addFiles(files);
+    toast(images.length + " foto('s) toegevoegd aan de lijst rechts.");
+  }
+  else if (files.length) toast('Daar kan ik niets mee: sleep een PDF of foto\'s.');
+  else toast('Er kwam geen bestand mee — probeer het bestand vanuit de Finder te slepen.');
+}, true);
+
+els.pdfZone.addEventListener('click', () => $('pdfInput').click());
+$('otherPdfBtn').addEventListener('click', () => $('pdfInput').click());
+$('pdfInput').addEventListener('change', e => {
+  const f = e.target.files[0];
+  e.target.value = '';
+  if (f) loadPdf(f);
+});
+
+// Photo side: the two buttons; dropping is handled at the window above.
+$('addFilesBtn').addEventListener('click', () => $('filesInput').click());
+$('addDirBtn').addEventListener('click', () => $('dirInput').click());
+['filesInput','dirInput'].forEach(id => $(id).addEventListener('change', e => {
+  const files = Array.from(e.target.files);
+  e.target.value = '';
+  addFiles(files);
+}));
+
+// Zoom.
+function setZoom(mode){ state.zoomMode = mode; layout(); }
+$('zoomIn').addEventListener('click', () => setZoom(Math.min(6, state.scale * 1.25)));
+$('zoomOut').addEventListener('click', () => setZoom(Math.max(0.1, state.scale / 1.25)));
+$('fitWidth').addEventListener('click', () => setZoom('fitWidth'));
+$('fitPage').addEventListener('click', () => setZoom('fitPage'));
+els.scroll.addEventListener('wheel', e => {
+  if (!e.ctrlKey || !state.pdfFile) return;
+  e.preventDefault();
+  setZoom(Math.min(6, Math.max(0.1, state.scale * (e.deltaY < 0 ? 1.1 : 1 / 1.1))));
+}, { passive: false });
+
+// Which page am I looking at, and jumping to another one.
+let scrollRaf = null;
+els.scroll.addEventListener('scroll', () => {
+  if (scrollRaf) return;
+  scrollRaf = requestAnimationFrame(() => {
+    scrollRaf = null;
+    renderVisiblePages();
+    if (document.activeElement === $('pageJump')) return;
+    const mid = els.scroll.scrollTop + els.scroll.clientHeight / 3;
+    let current = 1;
+    pageRecords.forEach((rec, i) => { if (rec.box.offsetTop <= mid) current = i + 1; });
+    $('pageJump').value = String(current);
+  });
+});
+function jumpToPage(){
+  const n = parseInt($('pageJump').value, 10);
+  const rec = pageRecords[n - 1];
+  if (!rec){ $('pageJump').value = '1'; return; }
+  els.scroll.scrollTo({ top: rec.box.offsetTop - 18, behavior: 'smooth' });
+}
+$('pageJump').addEventListener('change', jumpToPage);
+$('pageJump').addEventListener('keydown', e => { if (e.key === 'Enter'){ jumpToPage(); e.target.blur(); } });
+
+$('snapBtn').addEventListener('click', () => {
+  state.snap = !state.snap;
+  $('snapBtn').setAttribute('aria-pressed', String(state.snap));
+  toast(state.snap ? 'Spots worden midden tussen twee lijnen gezet.' : 'Uitlijnen staat uit.');
+});
+
+$('exportBtn').addEventListener('click', exportPdf);
+
+const about = $('about');
+$('aboutBtn').addEventListener('click', () => about.showModal());
+$('aboutClose').addEventListener('click', () => about.close());
+// A <dialog> backdrop is part of the dialog element, so a click that lands outside the
+// dialog's own box is a click on the backdrop.
+about.addEventListener('click', e => {
+  const r = about.getBoundingClientRect();
+  if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) about.close();
+});
+
+let resizeTimer = null;
+window.addEventListener('resize', () => {
+  if (!state.pdfFile) return;
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    if (state.zoomMode === 'fitWidth' || state.zoomMode === 'fitPage') layout();
+    else renderSpots();
+  }, 140);
+});
+
+window.addEventListener('beforeunload', e => {
+  if (!state.spots.length) return;
+  e.preventDefault();
+  e.returnValue = '';
+});
+
+renderImageList();
+</script>
+</body>
+</html>
