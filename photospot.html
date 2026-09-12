@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Photo Spot 1.0.0 — foto's op een PDF</title>
+<title>Photo Spot 1.0.1 — foto's op een PDF</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Cg%20transform%3D%22rotate%28-8%2016%2016%29%22%3E%3Crect%20x%3D%2211%22%20y%3D%223%22%20width%3D%2210%22%20height%3D%225%22%20rx%3D%222.2%22%20fill%3D%22%231a59bf%22%2F%3E%3Crect%20x%3D%222.5%22%20y%3D%227%22%20width%3D%2227%22%20height%3D%2221%22%20rx%3D%224.5%22%20fill%3D%22%231a59bf%22%2F%3E%3Ccircle%20cx%3D%2216%22%20cy%3D%2217.5%22%20r%3D%227.3%22%20fill%3D%22%23ffffff%22%2F%3E%3Ccircle%20cx%3D%2216%22%20cy%3D%2217.5%22%20r%3D%224.4%22%20fill%3D%22%2339b3f0%22%2F%3E%3Ccircle%20cx%3D%2224.3%22%20cy%3D%2212%22%20r%3D%221.6%22%20fill%3D%22%23ffd166%22%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E" />
 <!--
-  Photo Spot 1.0.0
+  Photo Spot 1.0.1
   Copyright 2026 Steel Prisms
 
   Licensed under the Apache License, Version 2.0 (the "License");
@@ -91,10 +91,15 @@
   }
   .spotLayer{position:absolute; inset:0;}
 
-  .spot{position:absolute; cursor:grab; touch-action:none;}
+  .spot{
+    position:absolute; cursor:grab; touch-action:none;
+    display:flex; align-items:center; justify-content:center;
+  }
   .spot svg{filter:drop-shadow(0 1px 2px rgba(0,0,0,.4));}
   .spot:active{cursor:grabbing;}
-  .spot svg{display:block; width:100%; height:100%;}
+  /* Sized from --icon-px, not from the box: below MIN_ICON_PX the box stops shrinking
+     so the Spot stays easy to grab, while the icon itself keeps shrinking with it. */
+  .spot svg{display:block; width:var(--icon-px); height:var(--icon-px);}
   /* A disc around the number would be as large as the 8 pt icon itself and would read
      as the marker rather than as a label on one. Bare digits with a white halo stay
      legible over any page content without competing. */
@@ -111,13 +116,35 @@
   #panel{width:25%; min-width:250px; display:flex; flex-direction:column; background:#fbfaf7; position:relative;}
   #panel h2{font-size:13px; margin:0; font-weight:650; letter-spacing:.01em;}
   #panelHead{padding:12px 14px 10px; border-bottom:1px solid var(--line); flex:none;}
-  #panelHead .count{font-family:var(--mono); font-size:11.5px; color:#7d8a83; margin-top:2px;}
+  #panelHead .countRow{
+    display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap;
+    gap:2px 10px; margin-top:2px;
+  }
+  #panelHead .count{font-family:var(--mono); font-size:11.5px; color:#7d8a83;}
+
+  /* Icon size. The slider is geometric rather than linear — its centre is the default
+     size and the two ends are half and double it — so the neutral setting is where the
+     handle visibly sits, in the middle. The preview beside it is the same drawing that
+     lands on the page; its box is fixed at the largest size the slider reaches, so the
+     line does not shift while the handle is dragged. */
+  #iconSizeGrp{display:flex; align-items:center; gap:4px; flex:none; margin-left:auto;}
+  #iconSize{width:76px; margin:0; accent-color:var(--accent); cursor:pointer;}
+  #iconSize:disabled{opacity:.45; cursor:not-allowed;}
+  #iconPreview{
+    width:26px; height:26px; flex:none;
+    display:flex; align-items:center; justify-content:center;
+  }
+  #iconPreview svg{display:block; filter:drop-shadow(0 1px 2px rgba(0,0,0,.35));}
+  #iconSize:disabled + #iconPreview{opacity:.45;}
   #viewerBar .brand{display:flex; align-items:center; gap:7px; padding-right:12px; margin-right:2px; border-right:1px solid var(--line);}
   #viewerBar .brand svg{width:24px; height:24px; flex:none;}
   #viewerBar .wordmark{font-size:14px; font-weight:650; letter-spacing:-0.01em; white-space:nowrap;}
+  /* Inside the wordmark, not beside it: a flex row centres its items on their boxes,
+     which leaves two different font sizes sitting on two different baselines. As part of
+     the wordmark's own text flow the version simply shares its baseline. */
   #viewerBar .version{
-    font-family:var(--mono); font-size:9.5px; color:#fff; background:var(--accent);
-    border-radius:8px; padding:1px 5px; letter-spacing:.02em;
+    font-family:var(--mono); font-size:10.5px; font-weight:400; color:#7d8a83;
+    letter-spacing:.02em; margin-left:7px;
   }
   #imgZone{
     margin:12px 14px; padding:14px; border:1.5px dashed var(--line); border-radius:3px;
@@ -190,7 +217,12 @@
   #about .head .name{font-size:19px; font-weight:650; letter-spacing:-0.01em;}
   #about .head .ver{font-family:var(--mono); font-size:11.5px; color:#7d8a83;}
   #about .body{padding:16px 22px 6px;}
-  #about dl{display:grid; grid-template-columns:auto 1fr; gap:5px 14px; margin:0 0 14px;}
+  /* Baseline, not stretch: the term is 12px and the definition 13px, so aligning their
+     boxes leaves the two texts a hair out of line. */
+  #about dl{
+    display:grid; grid-template-columns:auto 1fr; align-items:baseline;
+    gap:5px 14px; margin:0 0 14px;
+  }
   #about dt{font-size:12px; color:#7d8a83;}
   #about dd{margin:0; font-size:13px;}
   /* Two columns rather than three ragged lines: the roles line up under each other,
@@ -267,8 +299,7 @@
     <div id="viewerBar">
       <div class="brand">
         <svg aria-hidden="true" viewBox="0 0 32 32"><g transform="rotate(-8 16 16)"><rect x="11" y="3" width="10" height="5" rx="2.2" fill="#1a59bf"/><rect x="2.5" y="7" width="27" height="21" rx="4.5" fill="#1a59bf"/><circle cx="16" cy="17.5" r="7.3" fill="#ffffff"/><circle cx="16" cy="17.5" r="4.4" fill="#39b3f0"/><circle cx="24.3" cy="12" r="1.6" fill="#ffd166"/></g></svg>
-        <span class="wordmark">Photo Spot</span>
-        <span class="version">1.0.0</span>
+        <span class="wordmark">Photo Spot<span class="version">1.0.1</span></span>
       </div>
       <span class="name" id="pdfName">geen PDF geladen</span>
       <button class="tbtn" id="otherPdfBtn" disabled>Andere PDF…</button>
@@ -301,7 +332,14 @@
   <aside id="panel">
     <div id="panelHead">
       <h2>Foto's</h2>
-      <div class="count" id="imgCount">0 foto's — 0 spots geplaatst</div>
+      <div class="countRow">
+        <div class="count" id="imgCount">0 foto's — 0 spots geplaatst</div>
+        <span id="iconSizeGrp">
+          <input type="range" id="iconSize" min="-100" max="100" step="1" value="0" disabled
+                 aria-label="Grootte van het spot-icoontje in de PDF" />
+          <span id="iconPreview" aria-hidden="true"></span>
+        </span>
+      </div>
     </div>
     <div id="imgZone">
       Sleep hier foto's of een map
@@ -335,7 +373,7 @@
     <svg aria-hidden="true" viewBox="0 0 32 32"><g transform="rotate(-8 16 16)"><rect x="11" y="3" width="10" height="5" rx="2.2" fill="#1a59bf"/><rect x="2.5" y="7" width="27" height="21" rx="4.5" fill="#1a59bf"/><circle cx="16" cy="17.5" r="7.3" fill="#ffffff"/><circle cx="16" cy="17.5" r="4.4" fill="#39b3f0"/><circle cx="24.3" cy="12" r="1.6" fill="#ffd166"/></g></svg>
     <div>
       <div class="name">Photo Spot</div>
-      <div class="ver">versie 1.0.0</div>
+      <div class="ver">versie 1.0.1</div>
     </div>
   </div>
   <div class="body">
@@ -374,9 +412,11 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
 
 const IMG_RE = /\.(jpe?g|png|heic|heif|webp|gif|bmp|tiff?)$/i;
 const HEIC_RE = /\.(heic|heif)$/i;
-const ICON_PT = 8;           // icon edge length in PDF points
+const ICON_PT = 8;           // icon edge length in PDF points, at the default size
+const ICON_SCALE_MAX = 2;    // the size slider reaches twice, and half, that length
+const ICON_PREVIEW_PX = 13;  // the toolbar preview's edge length at the default size
 const ICON_PAD_PT = 2;       // extra hit area around the icon in the export
-const MIN_ICON_PX = 12;      // never render the editor icon smaller than this
+const MIN_ICON_PX = 12;      // never let the editor's grab target get smaller than this
 const OVERLAP_PT = 20;       // two spots closer than this are flagged
 const SNAP_DARK = 150;       // a pixel this dark counts as ink
 const SNAP_FILL = 0.55;      // ...and a row this full of ink counts as a rule
@@ -403,12 +443,14 @@ const state = {
   images: [],              // see addImages()
   spots: [],               // {id, num, imageId, page, x, y}
   snap: true,              // centre a dropped Spot between two horizontal rules
+  iconScale: 1,            // 0.5 … 2, set by the size slider; multiplies ICON_PT
 };
 let nextImageId = 1, nextSpotId = 1;
 
 const $ = (id) => document.getElementById(id);
 const els = {
   scroll: $('viewerScroll'), pages: $('pages'), pdfZone: $('pdfZone'),
+  iconSize: $('iconSize'), iconPreview: $('iconPreview'),
   panel: $('panel'), imgZone: $('imgZone'), imgList: $('imgList'),
   ghost: $('ghost'), ghostImg: $('ghost').querySelector('img'),
 };
@@ -761,7 +803,8 @@ async function loadPdf(file){
   els.pdfZone.hidden = true;
   $('pdfName').textContent = file.name;
   $('pageTotal').textContent = '/ ' + doc.numPages;
-  ['otherPdfBtn','pageJump','zoomOut','zoomIn','fitWidth','fitPage','snapBtn'].forEach(id => $(id).disabled = false);
+  ['otherPdfBtn','pageJump','zoomOut','zoomIn','fitWidth','fitPage','snapBtn','iconSize']
+    .forEach(id => $(id).disabled = false);
   layout();
   renderImageList();
 }
@@ -824,9 +867,14 @@ function renderPage(idx){
 // ---------- spots ----------
 function renumberSpots(){ state.spots.forEach((s, i) => { s.num = i + 1; }); }
 
+// The icon's edge length in points, as the slider has it. Everything that measures the
+// icon — the editor, the drop clamp, the overlap warning, the export — asks here.
+function iconPt(){ return ICON_PT * state.iconScale; }
+
 function isOverlapping(spot){
   return state.spots.some(o => o !== spot && o.page === spot.page &&
-    Math.abs(o.x - spot.x) < OVERLAP_PT && Math.abs(o.y - spot.y) < OVERLAP_PT);
+    Math.abs(o.x - spot.x) < OVERLAP_PT * state.iconScale &&
+    Math.abs(o.y - spot.y) < OVERLAP_PT * state.iconScale);
 }
 
 const SPOT_SVG =
@@ -839,7 +887,8 @@ const SPOT_SVG =
 
 function renderSpots(){
   pageRecords.forEach(rec => { rec.layer.innerHTML = ''; });
-  const px = Math.max(MIN_ICON_PX, ICON_PT * state.scale);
+  const iconPx = iconPt() * state.scale;
+  const px = Math.max(MIN_ICON_PX, iconPx);
   for (const spot of state.spots){
     const rec = pageRecords[spot.page];
     if (!rec) continue;
@@ -847,6 +896,7 @@ function renderSpots(){
     const el = document.createElement('div');
     el.className = 'spot' + (isOverlapping(spot) ? ' overlapping' : '');
     el.style.width = el.style.height = px + 'px';
+    el.style.setProperty('--icon-px', iconPx + 'px');
     el.style.left = (spot.x * state.scale - px / 2) + 'px';
     el.style.top = ((size.h - spot.y) * state.scale - px / 2) + 'px';
     el.dataset.spotId = spot.id;
@@ -1011,7 +1061,7 @@ function pageHitAt(clientX, clientY){
   const idx = Number(box.dataset.page);
   const r = box.getBoundingClientRect();
   const size = state.pageSizes[idx];
-  const half = ICON_PT / 2;
+  const half = iconPt() / 2;
   const rawY = size.h - (clientY - r.top) / state.scale;
   const snap = snapToRow(idx, rawY);
   return {
@@ -1314,11 +1364,12 @@ async function exportPdf(){
         const ocgResName = 'PSOC' + suffix;
         addOCGResourceToPage(pdfDoc, page, ocgRef, ocgResName);
 
-        const half = ICON_PT / 2;
+        const iconSize = iconPt();
+        const half = iconSize / 2;
         const ix = spot.x - half, iy = spot.y - half;   // the drop point is the icon's centre
         const base = `
 q
-${iconOps(ix, iy, ICON_PT)}
+${iconOps(ix, iy, iconSize)}
 Q
 `;
         const geo = cardGeometry(image.width, image.height, pw, ph, spot.x, spot.y);
@@ -1361,22 +1412,31 @@ EMC
         // with it and clicking a Spot did nothing at all. The view move is now a
         // separate PDF action (below) that cannot touch this one.
         const others = (siblings.get(spot.page) || []).filter(n => n !== layerName);
+        //
+        // Every *write* to .state makes Acrobat repaint the page, so a sibling is only
+        // switched off if it is actually on — at most one of them ever is. Switching all
+        // of them off unconditionally cost one repaint per Spot on the page, invisible on
+        // a fast machine and about a second on a slow one.
+        //
+        // The name is matched before .state is touched, and not the other way round: the
+        // comparison is plain script, while every state access crosses into Acrobat. This
+        // way only the Spots on this page are asked, not every layer in the document.
         const toggleJs =
           'var o=this.getOCGs();var me=' + jsString(layerName) + ';' +
           'var sib=[' + others.map(jsString).join(',') + '];' +
-          'for(var i=0;i<o.length;i++){var n=o[i].name;' +
-          'if(n==me){o[i].state=!o[i].state;}' +
-          'else{for(var j=0;j<sib.length;j++){if(n==sib[j]){o[i].state=false;}}}}';
+          'for(var i=0;i<o.length;i++){var g=o[i],n=g.name;' +
+          'if(n==me){g.state=!g.state;}' +
+          'else{for(var j=0;j<sib.length;j++){if(n==sib[j]){if(g.state){g.state=false;}break;}}}}';
         const closeJs =
           'var o=this.getOCGs();var me=' + jsString(layerName) + ';' +
-          'for(var i=0;i<o.length;i++){if(o[i].name==me){o[i].state=false;}}';
+          'for(var i=0;i<o.length;i++){if(o[i].name==me){o[i].state=false;break;}}';
 
         // Clicking a Spot shows the photo and does nothing else. Moving the reader's
         // view was tried — a /GoTo chained after the script, to centre the card in the
         // window — and it reads as the document jumping under your hands. The card is
         // sized to fit the visible band anyway, so it lands on screen without any help.
         const p = ICON_PAD_PT;
-        addLinkAnnotationWithJS(pdfDoc, page, [ix - p, iy - p, ix + ICON_PT + p, iy + ICON_PT + p],
+        addLinkAnnotationWithJS(pdfDoc, page, [ix - p, iy - p, ix + iconSize + p, iy + iconSize + p],
                                 toggleJs);
         addLinkAnnotationWithJS(pdfDoc, page, [closeX0, closeY0, closeX1, closeY1], closeJs, ocgRef);
 
@@ -1540,6 +1600,24 @@ function jumpToPage(){
 }
 $('pageJump').addEventListener('change', jumpToPage);
 $('pageJump').addEventListener('keydown', e => { if (e.key === 'Enter'){ jumpToPage(); e.target.blur(); } });
+
+// The slider carries no number: the preview is the readout, and it is the same icon the
+// export draws, so what the handle does is visible rather than described.
+function setIconScale(sliderValue){
+  state.iconScale = Math.pow(ICON_SCALE_MAX, sliderValue / 100);
+  const svg = els.iconPreview.firstElementChild;
+  const px = ICON_PREVIEW_PX * state.iconScale;
+  if (svg) svg.style.width = svg.style.height = px + 'px';
+  els.iconSize.title = 'Grootte van het spot-icoontje in de PDF — ' +
+                       Math.round(state.iconScale * 100) + '%' +
+                       (Number(sliderValue) === 0 ? ' (standaard)' : '');
+}
+els.iconPreview.innerHTML = SPOT_SVG;
+setIconScale(els.iconSize.value);
+els.iconSize.addEventListener('input', () => {
+  setIconScale(els.iconSize.value);
+  renderSpots();          // the placed Spots resize with it, so the page stays honest
+});
 
 $('snapBtn').addEventListener('click', () => {
   state.snap = !state.snap;
